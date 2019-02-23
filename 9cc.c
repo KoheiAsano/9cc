@@ -13,11 +13,43 @@ typedef struct {
   int val; // value when ty == TK_NUM
   char *input;
 } Token;
-//Token sequence limited 100 tokens
-Token tokens[100];
+
+typedef struct {
+  void **data;
+  int capacity;
+  int len;
+} Vector;
+
+Vector *new_vector() {
+  Vector *vec = malloc(sizeof(Vector));
+  vec->data = malloc(sizeof(void *) * 16);
+  vec->capacity = 16;
+  vec->len = 0;
+  return vec;
+}
+
+void vec_push(Vector *vec, void *elem){
+  if(vec->capacity == vec->len){
+    vec->capacity *= 2;
+    vec->data = realloc(vec->data, sizeof(void *) * vec->capacity);
+  }
+  vec->data[vec->len++] = elem;
+}
+
+Vector *tokens;
+int pos = 0;
+
+Token *add_token(Vector *v, int ty, char *input){
+  Token *t = malloc(sizeof(Token));
+  t->ty = ty;
+  t->input = input;
+  vec_push(v,t);
+  return t;
+}
 
 // split string pointed by p, save on tokens
-void tokenize(char *p){
+Vector *tokenize(char *p){
+  Vector *v = new_vector();
   int i=0;
   while(*p){
     //skip space
@@ -26,16 +58,14 @@ void tokenize(char *p){
       continue;
     }
     if(*p == '+' || *p == '-' || *p == '*' || *p == '/' || *p == '(' || *p == ')'){
-      tokens[i].ty = *p;
-      tokens[i].input = p;
+      add_token(v,*p,p);
       i++;
       p++;
       continue;
     }
     if(isdigit(*p)){
-      tokens[i].ty = TK_NUM;
-      tokens[i].input = p;
-      tokens[i].val = strtol(p,&p,10);
+      Token *t = add_token(v,TK_NUM,p);
+      t->val = strtol(p,&p,10);
       i++;
       continue;
     }
@@ -43,8 +73,8 @@ void tokenize(char *p){
     fprintf(stderr, "can't tokenize: %s\n", p);
     exit(1);
   }
-  tokens[i].ty = TK_EOF;
-  tokens[i].input = p;
+  add_token(v,TK_EOF,p);
+  return v;
 }
 
 
@@ -73,10 +103,10 @@ Node *new_node_num(int val){
   node->val = val;
   return node;
 }
-int pos = 0;
+
 
 int consume(int ty){
-  if (tokens[pos].ty != ty)
+  if (((Token *)tokens->data[pos])->ty != ty)
     return 0;
   pos++;
   return 1;
@@ -112,16 +142,17 @@ Node *mul(){
 }
 
 Node *term(){
+  Token *t = tokens->data[pos];
   if (consume('(')){
     Node *node = add();
     if(!consume(')'))
-      fprintf(stderr,"close parenthesis is not found: %s", tokens[pos].input);
+      fprintf(stderr,"close parenthesis is not found: %s", t->input);
     return node;
   }
-  if(tokens[pos].ty == TK_NUM)
-    return new_node_num(tokens[pos++].val);
+  if(t->ty == TK_NUM)
+    return new_node_num(((Token *)tokens->data[pos++])->val);
 
-  fprintf(stderr,"unknown token : %s", tokens[pos].input);
+  fprintf(stderr,"unknown token : %s", t->input);
 }
 
 
@@ -156,7 +187,7 @@ void gen(Node *node){
 
 // func to report error
 void error(int i){
-  fprintf(stderr, "unknown string: '%s'\n",tokens[i].input);
+  fprintf(stderr, "unknown string: '%s'\n",((Token *)tokens->data[i])->input);
   exit(1);
 }
 
@@ -166,7 +197,7 @@ int main(int argc, char **argv){
     fprintf(stderr, "wrong argument's number\n");
     return 1;
   }
-  tokenize(argv[1]);
+  tokens = tokenize(argv[1]);
   Node *node = add();
 
   //output initial part of asm
